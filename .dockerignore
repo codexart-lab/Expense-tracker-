@@ -1,0 +1,15 @@
+.env
+.env.*
+*.db
+.git
+.gitignore
+README.md
+LICENSE
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.venv
+venv
+*.log
+.DS_Store

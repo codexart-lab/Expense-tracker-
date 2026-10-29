@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: expense-tracker-bot
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: expense-tracker-bot
+          property: host
+    disk:
+      name: expense-data
+      mountPath: /data
+      sizeGB: 1
