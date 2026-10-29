@@ -1,11 +1,17 @@
 import logging
+import os
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import BotCommand, BotCommandScopeDefault, Update
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeDefault,
+    FSInputFile,
+    Update,
+)
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -17,12 +23,13 @@ from bot.config import (
     RENDER_EXTERNAL_URL,
     WEBHOOK_SECRET,
 )
-from bot.database import init_db
+from bot.database import get_db_path, init_db
 from bot.handlers import register_all
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ✅ aiogram >= 3.7: parse_mode must go through DefaultBotProperties
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 register_all(dp)
@@ -65,7 +72,9 @@ app = FastAPI(lifespan=lifespan)
 @app.post("/webhook")
 async def webhook(
     request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(None, alias="X-Telegram-Bot-Api-Secret-Token"),
+    x_telegram_bot_api_secret_token: str | None = Header(
+        None, alias="X-Telegram-Bot-Api-Secret-Token"
+    ),
 ):
     if x_telegram_bot_api_secret_token != WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret token")
@@ -91,13 +100,22 @@ async def trigger_backup(
     if ADMIN_ID is None:
         raise HTTPException(status_code=500, detail="ADMIN_ID not configured")
 
-    db_path = await __import__("bot.database", fromlist=["get_db_path"]).get_db_path()
+    db_path = await get_db_path()
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        shutil.copy2(db_path, tmp.name)
-        from aiogram.types import FSInputFile
-        document = FSInputFile(tmp.name, filename="expenses.db")
-        await bot.send_document(chat_id=ADMIN_ID, document=document, caption="📦 Scheduled backup")
+        tmp_path = tmp.name
+    try:
+        shutil.copy2(db_path, tmp_path)
+        await bot.send_document(
+            chat_id=ADMIN_ID,
+            document=FSInputFile(tmp_path, filename="expenses.db"),
+            caption="📦 Scheduled backup",
+        )
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     return JSONResponse({"ok": True, "message": "Backup sent to admin"})
 
